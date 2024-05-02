@@ -1,5 +1,15 @@
+---
+title: "R Notebook"
+runtime: shiny
+output: 
+  html_document:
+    css: my.css
+---
+
+```{r echo = FALSE, message=F, warning=F}
 require(shiny)
 require(ggalluvial)
+require(colourpicker)
 require(scales)
 require(forcats)
 
@@ -32,7 +42,7 @@ ui <- fluidPage(
                 
                 mainPanel(
                   fluidRow(
-                    verticalLayout(tableOutput("df_new"), 
+                    verticalLayout(tableOutput("df_new"),
                                    plotOutput("plot"),
                                    tableOutput("plot_tab")
                   )
@@ -145,9 +155,9 @@ server <- function(input, output, session) {
                                id = "Cohort")
     
     # need to refactor strata order based on strata color code order
-    refactor<-levels(factor(all_groups(), levels = c(factor(all_groups()))))
-    refactor_names<-factor(gsub(".*\\: ","",refactor),ordered = T)
-    df_long$stratum<-factor(df_long$stratum,levels = levels(fct_rev(refactor_names)))
+    refactor<-levels(factor(all_groups(), levels = c(all_groups())))
+    refactor_names<-gsub(".*\\: ","",refactor)
+    df_long$stratum<-factor(df_long$stratum,levels = refactor_names)
     
     ggplot(df_long,
            aes(x = x, y = Freq, stratum = stratum, alluvium = Cohort, fill = stratum, label = stratum)
@@ -155,14 +165,22 @@ server <- function(input, output, session) {
       geom_stratum(alpha = ribbon_alpha_control)+
       geom_flow()+
       geom_text(stat = "stratum", size = 3)+
-      scale_fill_manual(values = as.character(colors()), name = "Strata Categories")
+      scale_fill_manual(values = as.character(colors()), name = "Strata Categories")+
+      theme(axis.text.x = element_text())
   })
   
   # test code 
   # output$plot_tab<-renderTable({
-  #   refactor<-levels(factor(all_groups(), levels = c(factor(all_groups()))))
-  #   refactor_names<-factor(gsub(".*\\: ","",refactor),ordered = T)
-  #   levels(fct_rev(refactor_names))
+  #   refactor<-levels(factor(all_groups(), levels = c(all_groups())))
+  #   refactor_names<-gsub(".*\\: ","",refactor)
+  #   ord_T_rev<-levels(fct_rev(refactor_names))
+  #   ord_T<-levels(refactor_names)
+  #   
+  #   refactor_names2<-factor(gsub(".*\\: ","",refactor),ordered = F)
+  #   ord_F_rev<-levels(fct_rev(refactor_names2))
+  #   ord_F<-levels(refactor_names2)
+  #   
+  #   cbind(refactor,refactor_names,ord_T_rev,ord_T,refactor_names2,ord_F_rev,ord_F)
   # })
   
   # creates file to download after button is hit, then handles download
@@ -177,4 +195,5 @@ server <- function(input, output, session) {
   
 }
 
-shinyApp(ui, server)
+shinyApp(ui, server, options = list(height = 1000))
+```
