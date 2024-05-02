@@ -1,0 +1,180 @@
+require(shiny)
+require(ggalluvial)
+require(scales)
+require(forcats)
+
+ui <- fluidPage(
+  
+  sidebarLayout(position="left",
+                # creates upload button
+                sidebarPanel(
+                  
+                  fileInput("upload", "Choose CSV file", multiple = FALSE,
+                            accept = c("text/csv","text/comma-separated-values,text/plain",".csv"),
+                            width = NULL, buttonLabel = "Browse...",
+                            placeholder = "No file selected"),
+                  
+                  # creates dropdown menu based on the column names of the upload
+                  # for creating group variable (concatenates multiple columns if needed)
+                  selectInput("group", "Choose strata (order matters)", choices = c(), multiple = T),
+                  
+                  # creates dropdown menu based on the column names of the upload
+                  # for removing non-data columns, leaving only data and group for the pivot
+                  selectInput("freq", "Choose frequency column", choices = c(), multiple = T),
+                  
+                  # UI used for changing alluvial colors
+                  uiOutput('myPanel')
+
+                  # button to start download
+                #  downloadButton("download", "Download .csv")
+                  
+                ),
+                
+                mainPanel(
+                  fluidRow(
+                    verticalLayout(tableOutput("df_new"), 
+                                   plotOutput("plot"),
+                                   tableOutput("plot_tab")
+                  )
+                )
+              )
+  )
+)
+
+server <- function(input, output, session) {
+  
+  # waits for file upload then reads csv
+  data <- reactive({
+    req(input$upload)
+    df <- read.csv(
+      input$upload$datapath,
+      header = T,
+      sep = ",",
+      quote = 
+    )
+  })
+  
+  # creates dropdown for strata (looks for character columns)
+  observe({
+    ischar <- vapply(data(), is.character, logical(1)) | vapply(data(), is.character, logical(1))
+    characterCols <- names(ischar)[ischar]
+    updateSelectInput(session, "group",
+                      choices = characterCols, # update choices
+                      selected = NULL) # remove selection
+  })
+  
+  # creates dropdown for frequency (looks for numeric columns)
+  observe({
+    isnum <- vapply(data(), is.numeric, logical(1)) | vapply(data(), is.numeric, logical(1))
+    characterCols <- names(isnum)[isnum]
+    updateSelectInput(session, "freq",
+                 choices = characterCols, # update choices
+                 selected = NULL) # remove selection
+  })
+  
+  # outputs table for alluvial strata
+  group_new<-reactive({
+    req(input$group)
+    df4<-data()
+    df_groups<-data.frame(df4[,c(input$group)])
+    colnames(df_groups)<-c(input$group)
+    return(df_groups)
+  })
+  
+  # outputs table for freq
+  df_freq<-reactive({
+    req(input$freq)
+    df5<-data()
+    df_freq<-data.frame(df5[,c(input$freq)])
+    colnames(df_freq)<-"Freq"
+    return(df_freq)
+  })
+  
+  df_alluvial<-reactive({
+    df6<-cbind(group_new(),df_freq())
+    return(df6)
+  })
+  
+  # outputs data head or full dataset for original df
+  output$df_new<-renderTable(
+    return(head(data()))
+  )
+  
+  # creates variable of groups/column names for color control
+  all_groups<-reactive({
+    levels<-paste0("Strata color for (",col(group_new(), TRUE),"): ",as.matrix(group_new()))
+    all_levels<-unique(levels)
+    all_levels
+  })
+  
+  # color control for alluvial plot (adds UI for color picker by group within each strata)
+  cols <- reactive({
+    seq_collect<-seq_along(all_groups())
+    pal_cols<-hue_pal()(max(seq_collect))
+    lapply(seq_collect, function(i) {
+      colourInput(paste("col", i, sep="_"), paste0(all_groups()[i]), pal_cols[i])
+    })
+  })
+  
+  # factor level control for alluvial plot order
+  # cols <- reactive({
+  #   seq_collect<-seq_along(all_groups())
+  #   lapply(seq_collect, function(i) {
+  #     colourInput(paste("col", i, sep="_"), paste0(all_groups()[i]))
+  #   })
+  # })
+
+  output$myPanel <- renderUI({cols()})
+  
+  # Put all the input in a vector for colors (collects the hex codes for plotting)
+  colors <- reactive({
+    lapply(seq_along(all_groups()), function(i) {
+      input[[paste("col", i, sep="_")]]
+    })
+  })
+  
+  
+  # alluvial plot code
+  output$plot<-renderPlot({
+    ribbon_alpha_control<-0.8
+    
+    col_count<-ncol(df_alluvial())
+
+    df_long <- to_lodes_form(as.data.frame(df_alluvial()),
+                               axes = 1:(col_count-1),
+                               id = "Cohort")
+    
+    # need to refactor strata order based on strata color code order
+    refactor<-levels(factor(all_groups(), levels = c(factor(all_groups()))))
+    refactor_names<-factor(gsub(".*\\: ","",refactor),ordered = T)
+    df_long$stratum<-factor(df_long$stratum,levels = levels(fct_rev(refactor_names)))
+    
+    ggplot(df_long,
+           aes(x = x, y = Freq, stratum = stratum, alluvium = Cohort, fill = stratum, label = stratum)
+           )+
+      geom_stratum(alpha = ribbon_alpha_control)+
+      geom_flow()+
+      geom_text(stat = "stratum", size = 3)+
+      scale_fill_manual(values = as.character(colors()), name = "Strata Categories")
+  })
+  
+  # test code 
+  # output$plot_tab<-renderTable({
+  #   refactor<-levels(factor(all_groups(), levels = c(factor(all_groups()))))
+  #   refactor_names<-factor(gsub(".*\\: ","",refactor),ordered = T)
+  #   levels(fct_rev(refactor_names))
+  # })
+  
+  # creates file to download after button is hit, then handles download
+  output$download <- downloadHandler(
+    filename = function() {
+      paste0("pivoted_",input$upload)
+    },
+    content = function(file) {
+      write.csv(pivot(), file, row.names = F)
+    }
+  )
+  
+}
+
+shinyApp(ui, server)
