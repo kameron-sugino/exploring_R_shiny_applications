@@ -16,112 +16,69 @@ require(scales)
 require(forcats)
 require(periscope)
 
-ui <- shinyUI(pageWithSidebar(
+ui <- fluidPage(
+  
   headerPanel("Alluvial Plot"),
-  sidebarPanel(
-    tabsetPanel(
-      id="tabset_side",
-      
-    conditionalPanel(condition="input.conditionedPanels==1",
-                     
-                     # creates upload button
-                     fileInput("upload", "Choose CSV file", 
-                               multiple = FALSE,
-                               accept=c("text/csv", 
-                                        "text/comma-separated-values,
+  
+    sidebarPanel(
+      # creates upload button
+      fileInput("upload", "Choose CSV file", 
+                multiple = FALSE,
+                accept=c("text/csv", 
+                         "text/comma-separated-values,
                                                           text/plain", 
-                                        ".csv"),
-                               width = NULL, buttonLabel = "Browse...",
-                               placeholder = "No file selected"),
-                     
-                     uiOutput("dynamic_strata"),
-                     uiOutput("dynamic_frequency"),
-                     
-                     # button to force panel switch so the plot will appear; 
-                     # there must be a better way!
-                     actionButton("plot_btn", "Plot Alluvial"),
-                    
+                         ".csv"),
+                width = NULL, buttonLabel = "Browse...",
+                placeholder = "No file selected"),
+      
+      uiOutput("dynamic_strata"),
+      uiOutput("dynamic_frequency"),
+
+      # strata opacity controller
+      sliderInput("alpha_control", "Ribbon Opacity", 
+                  value = 0.5, min = 0, max = 1),
+      
+      # controller for strata color by class
+      checkboxInput("col_switch","Only use colors in first strata", value=F),
+      
+      # controller for plot file type
+      selectInput("file_type", label =  "File Type",
+                  choices = c("pdf", "png", "tiff")), 
+      
+      # plotting options
+      splitLayout(cellWidths = c("24%", "24%", "24%", "28%"),
+                  
+                  numericInput("dpi","DPI", value = 300),
+                  
+                  numericInput("width","Width", value = 250),
+                  
+                  numericInput("height","Height", value = 250),
+                  
+                  checkboxGroupInput("units", "Units",
+                                     choices = c("in","cm","mm","px"),
+                                     selected = "mm",
+                                     inline = )   
+                ),
+      
+      # button to start download
+      downloadButton("download","Download Plot"),
+      
+      # UI used for changing alluvial colors
+      #uiOutput('myPanel')
     ),
-    
-    conditionalPanel(condition="input.conditionedPanels==2",
-      tags$head(
-        tags$style(HTML("
-        input[type=number] {
-              -moz-appearance:textfield;
-        }
-        input[type=number]::{
-              -moz-appearance:textfield;
-        }
-        input[type=number]::-webkit-outer-spin-button,
-        input[type=number]::-webkit-inner-spin-button {
-              -webkit-appearance: none;
-              margin: 0;
-        }
-    "))
-      ),                     
-                     # strata opacity controller
-                     sliderInput("alpha_control", "Ribbon Opacity", 
-                                 value = 0.5, min = 0, max = 1),
-                     
-                     # controller for strata color by class
-                     checkboxInput("col_switch","Only use colors in first strata", value=F),
-                     
-                     # controller for plot file type
-                     selectInput("file_type", label =  "File Type",
-                                 choices = c("pdf", "png", "tiff")), 
-                     
-                     # plotting options
-                     splitLayout(cellWidths = c("24%", "24%", "24%", "28%"),
-                                 
-                           numericInput("dpi","DPI", value = 300),
-                       
-                           numericInput("width","Width", value = 250),
-                       
-                           numericInput("height","Height", value = 250),
-                       
-                           checkboxGroupInput("units", "Units",
-                                  choices = c("in","cm","mm","px"),
-                                  selected = "mm",
-                                  inline = )
-                          ),
-                     
-                     # button to start download
-                     downloadButton("download","Download Plot"),
-                     
-                     # UI used for changing alluvial colors
-                     uiOutput('myPanel')
-    ) 
-  )
-),
-  mainPanel(
-    tabsetPanel(
-      id = "conditionedPanels",
-      tabPanel("Upload", value = 1, {
-        tableOutput("df_new")
-      }), 
-      tabPanel("Plot Options", value=2, {
-        plotOutput("plot")
-      })
-    )
-  )
+  
+      mainPanel(
+        splitLayout(cellWidths=c("70%","30%"),
+          plotOutput("plot"),
+          #textOutput("test"),
+          # UI used for changing alluvial colors
+          uiOutput('myPanel')            
+        )
+      ), 
+  
+  
+  
 )
-)
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 server <- function(input, output, session) {
@@ -130,13 +87,14 @@ server <- function(input, output, session) {
   # file upload
   # waits for file upload then reads csv
   data <- eventReactive(input$upload, {
-      df <- read.csv(
+    df <- read.csv(
       input$upload$datapath,
       header = T,
       sep = ",",
       quote = 
     )
   })
+  
   ####################
   # chunks used for creating modular drop down menus
   ####################
@@ -162,7 +120,7 @@ server <- function(input, output, session) {
                   multiple = T)
     })
   })
-
+  
   
   # dynamic render of frequency options
   output$dynamic_frequency<-renderUI({
@@ -184,7 +142,7 @@ server <- function(input, output, session) {
                   multiple = F)
     })
   })
-    
+  
   ####################
   # collects user inputs from modular drop down
   ####################
@@ -216,6 +174,7 @@ server <- function(input, output, session) {
   output$df_new<-renderTable(
     return(head(data()))
   )
+  
   ####################
   # plot color controllers
   ####################
@@ -226,17 +185,6 @@ server <- function(input, output, session) {
     all_levels
   })
   
-  # color control for alluvial plot (adds UI for color picker by group within each strata)
-  cols <- eventReactive(input$plot_btn,{
-    seq_collect<-seq_along(all_groups())
-    pal_cols<-hue_pal()(max(seq_collect))
-    lapply(seq_collect, function(i) {
-      colourInput(paste("col", i, sep="_"), paste0(all_groups()[i]), pal_cols[i])
-    })
-  })
-  
-  output$myPanel <- renderUI({cols()})
-  
   # Put all the input in a vector for colors (collects the hex codes for plotting)
   colors <- reactive({
     lapply(seq_along(all_groups()), function(i) {
@@ -244,22 +192,25 @@ server <- function(input, output, session) {
     })
   })
   
-  # action button to force panel switch so colors load and plot loads
-  observe({
-    # use tabsetPanel 'id' argument to change tabs
-    if (input$plot_btn > 0) {
-      updateTabsetPanel(session, "conditionedPanels", selected = "2")
-    }
-  })
   
+  # color control for alluvial plot (adds UI for color picker by group within each strata)
+  cols <- reactive({
+    seq_collect<-seq_along(all_groups())
+    pal_cols<-hue_pal()(max(seq_collect))
+    lapply(seq_collect, function(i) {
+      colourInput(paste("col", i, sep="_"), paste0(all_groups()[i]), pal_cols[i])
+    })
+  })
+  output$myPanel <- renderUI({cols()})
 
+  
   ####################
   # alluvial plot code; write to reactive statement
   ####################
   alpha1 <- reactiveVal()
   alpha2 <- reactiveVal()
   alpha3 <- reactiveVal()
-
+  
   observe({
     if(input$col_switch){
       alpha1(0)
@@ -273,6 +224,7 @@ server <- function(input, output, session) {
   })
   
   plot<-reactive({
+    
     col_count<-ncol(df_alluvial())
     
     df_long <- to_lodes_form(as.data.frame(df_alluvial()),
@@ -285,8 +237,9 @@ server <- function(input, output, session) {
     df_long$stratum<-factor(df_long$stratum,levels = refactor_names)
     
     ggplot(df_long,
-           aes(x = x, y = Freq, stratum = stratum, alluvium = Cohort, fill = stratum, label = stratum)
-    )+
+           aes(x = x, y = Freq, 
+               stratum = stratum, alluvium = Cohort, 
+               fill = stratum, label = stratum))+
       geom_alluvium(alpha = alpha2())+
       geom_flow(alpha = alpha3())+
       geom_stratum(alpha = alpha1())+
@@ -294,28 +247,11 @@ server <- function(input, output, session) {
       scale_fill_manual(values = as.character(colors()), name = "Strata Categories")+
       theme(axis.text.x = element_text())
   })
-
-  output$plot<-renderPlot({
-      plot()
-    })
-
   
-  ####################
-  # creates file to download after button is hit, then handles download
-  ####################  
-  output$download <- downloadHandler(
-    filename = function(){
-      paste("alluvial_", gsub("\\.csv","",input$upload$name), ".", input$file_type, sep="")
-    },
-    content = function(file){
-      ggplot2::ggsave(file, plot=plot(),  
-                      device = input$file_type, 
-                      width = input$width, 
-                      height = input$height,
-                      units = input$units,
-                      dpi = input$dpi)
-    }
-  )
+  output$plot<-renderPlot({
+    plot()
+  })
+  
 }
 
 
