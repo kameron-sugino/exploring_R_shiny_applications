@@ -1,0 +1,190 @@
+---
+title: "merge_csv"
+author: "Kameron Sugino"
+date: "2024-05-22"
+runtime: shiny
+output: 
+  html_document:
+    css: my.css
+---
+
+```{r echo = FALSE, message=F}
+require(shiny)
+
+ui <- fluidPage(
+  #Include custom CSS
+  tags$head(
+    tags$style(HTML('.shiny-split-layout>div {overflow: hidden;}')),
+  ),
+
+  sidebarLayout(position="left",
+                # creates upload button
+                sidebarPanel(width=5,
+                  
+                  splitLayout(
+                    # input for file 1
+                      verticalLayout(fluid = T,
+                        fileInput("upload1", "Choose CSV file 1", multiple = FALSE,
+                          accept = c("text/csv","text/comma-separated-values,text/plain",".csv"),
+                          width = NULL, buttonLabel = "Browse...",
+                          placeholder = ""),
+                        
+                    # creates dropdown menu based on the column names of the upload
+                    # for creating group variable (concatenates multiple columns if needed)
+                    selectInput("group1", 
+                                "Column(s) to merge", 
+                                choices = c(), multiple = T),
+                    
+                    
+                    # append name to columns to avoid duplicate column calling
+                    textInput("group1_app", 
+                              label = "Append tag to column", 
+                              value = 1),
+                        
+                      ),
+                      
+                    # input for file 2
+                      verticalLayout(
+                        fileInput("upload2", "Choose CSV file 2", multiple = FALSE,
+                          accept = c("text/csv","text/comma-separated-values,text/plain",".csv"),
+                          width = NULL, buttonLabel = "Browse...",
+                          placeholder = ""),
+                        
+                    # creates dropdown menu based on the column names of the upload
+                    # for removing non-data columns, leaving only data and group for the pivot
+                    selectInput("group2", 
+                                "Column(s) to merge", 
+                                choices = c(), 
+                                multiple = T),
+                    
+                    # append name to columns to avoid duplicate column calling
+                    textInput("group2_app", 
+                              label = "Append tag to column", 
+                              value = 2),
+                      ),
+                    
+                  ),
+
+                # button to start conversion process
+                actionButton("click","Convert File"),
+                
+                # button to start download
+                downloadButton("download", "Download .csv")
+                
+                ),
+              
+  
+  mainPanel(width=7,
+    fluidRow(
+      verticalLayout(tableOutput("df_merge"),
+                     splitLayout(
+                      tableOutput("df1"),
+                      tableOutput("df2"))
+                     )
+      )
+    )
+  )
+)
+
+server <- function(input, output, session) {
+
+  # waits for file upload then reads csv
+  data1 <- reactive({
+    req(input$upload1)
+    df <- read.csv(
+      input$upload1$datapath,
+      header = T,
+      sep = ",",
+      quote = 
+    )
+  })
+  
+  # waits for file upload, then pulls column names for group dropdown
+  data1_grp <- reactive({
+    df2 <- data1()
+    updateSelectInput(session,"group1",choices=colnames(df2))
+    return(df2)
+  })
+  
+  # outputs results for group concatenation (needed for dropdown options to show up)
+  data1_sel<-reactive({
+    return(data1_grp()[,colnames(data1_grp())%in%input$group1])
+  })
+  
+  
+  # waits for file upload then reads csv
+  data2 <- reactive({
+    req(input$upload2)
+    df <- read.csv(
+      input$upload2$datapath,
+      header = T,
+      sep = ",",
+      quote =
+    )
+  })
+
+  # waits for file upload, then pulls column names for group dropdown
+  data2_grp <- reactive({
+    df3 <- data2()
+    updateSelectInput(session,"group2",choices=colnames(df3))
+    return(df3)
+  })
+  
+  # outputs results for group concatenation (needed for dropdown options to show up)
+  data2_sel<-reactive({
+    return(data2_grp()[,colnames(data2_grp())%in%input$group2])
+  })
+
+  # checks for upload, runs pivot code after actionbutton press
+  df_merge<-eventReactive(input$click, {
+    dat1<-data1()
+    colnames(dat1)<-paste0(input$group1_app,"_",colnames(dat1))
+    dat2<-data2()
+    colnames(dat2)<-paste0(input$group2_app,"_",colnames(dat2))
+    dat3<-merge(dat1,dat2,
+                by.x=paste0(input$group1_app,"_",input$group1),
+                by.y=paste0(input$group2_app,"_",input$group2))
+    return(dat3)
+  })
+
+   observeEvent(input$click, {
+    showNotification("Running...", type = "message")
+  })
+   
+  observeEvent(df_merge(),{
+    showNotification("Done!", type = "message")
+  })
+
+  # outputs data head or full dataset for original df
+  output$df1<-renderTable({
+    validate(
+      need(data1_sel() != "", "Please select the column to merge (Data Set 1)")
+    )
+    return(head(data1_sel()))
+  })
+  output$df2<-renderTable({
+    validate(
+      need(data2_sel() != "", "Please select the column to merge (Data Set 2)")
+    )
+    return(head(data2_sel()))
+  })
+  
+  # outputs data head or full dataset for new df
+  output$df_merge<-renderTable(
+    return(head(df_merge()))
+  )
+  
+  # creates file to download after button is hit, then handles download
+  output$download <- downloadHandler(
+    filename = function() {
+      paste0("merged_",input$upload1)
+    },
+    content = function(file) {
+      write.csv(df_merge(), file, row.names = F)
+    }
+  )
+  
+}
+
+shinyApp(ui, server, options = list(height = 1000))
+```

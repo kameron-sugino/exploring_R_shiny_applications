@@ -54,7 +54,7 @@ ui <- fluidPage(
                   
                   numericInput("height","Height", value = 250),
                   
-                  checkboxGroupInput("units", "Units",
+                  radioButtons("units", "Units",
                                      choices = c("in","cm","mm","px"),
                                      selected = "mm",
                                      inline = )   
